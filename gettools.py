@@ -86,6 +86,60 @@ def reporthook(count, block_size, total_size):
 					(percent, progress_size / (1024 * 1024), speed, time_remaining))
 	sys.stdout.flush()
 
+def query(question, default="yes"):
+    """Ask a yes/no question via raw_input() and return their answer.
+
+    "question" is a string that is presented to the user.
+    "default" is the presumed answer if the user just hits <Enter>.
+        It must be "yes" (the default), "no" or None (meaning
+        an answer is required of the user).
+
+    The "answer" return value is True for "yes" or False for "no".
+	########### CODE FROM https://stackoverflow.com/questions/3041986/apt-command-line-interface-like-yes-no-input ###########
+    """
+    valid = {"yes": True, "y": True, "ye": True,
+             "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+        choice = input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' "
+                             "(or 'y' or 'n').\n")
+
+def processfiles(dest):
+	print('Extracting com.vmware.fusion.zip.tar...')
+	tar = tarfile.open(convertpath(dest + '/tools/com.vmware.fusion.zip.tar'), 'r')
+	tar.extract('com.vmware.fusion.zip', path=convertpath(dest + '/tools/'))
+	tar.close()
+		
+	print('Extracting files from com.vmware.fusion.zip...')
+	cdszip = zipfile.ZipFile(convertpath(dest + '/tools/com.vmware.fusion.zip'), 'r')
+	cdszip.extract('payload/VMware Fusion.app/Contents/Library/isoimages/darwin.iso', path=convertpath(dest + '/tools/'))
+	cdszip.extract('payload/VMware Fusion.app/Contents/Library/isoimages/darwinPre15.iso', path=convertpath(dest + '/tools/'))
+	cdszip.close()
+		
+	# Move the iso and sig files to tools folder
+	shutil.move(convertpath(dest + '/tools/payload/VMware Fusion.app/Contents/Library/isoimages/darwin.iso'), convertpath(dest + '/tools/darwin.iso'))
+	shutil.move(convertpath(dest + '/tools/payload/VMware Fusion.app/Contents/Library/isoimages/darwinPre15.iso'), convertpath(dest + '/tools/darwinPre15.iso'))
+		
+	# Cleanup working files and folders
+	shutil.rmtree(convertpath(dest + '/tools/payload'), True)
+	os.remove(convertpath(dest + '/tools/com.vmware.fusion.zip.tar'))
+	os.remove(convertpath(dest + '/tools/com.vmware.fusion.zip'))
+
 def main():
 	# Check minimal Python version is 2.7
 	if sys.version_info < (3, 0):
@@ -94,14 +148,25 @@ def main():
 
 	dest = os.path.dirname(os.path.abspath(__file__))
 
-	# Re-create the tools folder
-	shutil.rmtree(dest + '/tools', True)
-	os.mkdir(dest + '/tools')
+	# Check if path exists
+	if not os.path.exists(dest + '/tools'):
+		# Re-create the tools folder
+		shutil.rmtree(dest + '/tools', True)
+		os.mkdir(dest + '/tools')
 
 	parser = CDSParser()
 
 	# Last published version doesn't ship with darwin tools
 	# so in case of error get it from the core.vmware.fusion.tar
+	
+	# Ask user if file has been there
+	if os.path.isfile(dest + '/tools/com.vmware.fusion.zip.tar'):
+		print('Seems like you had already had the file com.vmware.fusion.zip.tar in the folder tools.')
+		# User says yes
+		if query('Would you like to use it?'):
+			processfiles(dest)
+			return
+	# User says no or file didnt exist
 	print('Trying to get tools from the packages folder...')
 
 	# Setup url and file paths
@@ -138,7 +203,7 @@ def main():
 	except:
 		# No tools found, get em from the core tar
 		print('Tools aren\'t here... Be patient while I download and' +
-			  ' give a look into the core.vmware.fusion.tar file')
+				' give a look into the core.vmware.fusion.tar file')
 		urlcoretar = url + lastVersion + '/core/com.vmware.fusion.zip.tar'
 			  
 		# Get the main core file
@@ -150,25 +215,7 @@ def main():
 			
 		print()
 		
-		print('Extracting com.vmware.fusion.zip.tar...')
-		tar = tarfile.open(convertpath(dest + '/tools/com.vmware.fusion.zip.tar'), 'r')
-		tar.extract('com.vmware.fusion.zip', path=convertpath(dest + '/tools/'))
-		tar.close()
-		
-		print('Extracting files from com.vmware.fusion.zip...')
-		cdszip = zipfile.ZipFile(convertpath(dest + '/tools/com.vmware.fusion.zip'), 'r')
-		cdszip.extract('payload/VMware Fusion.app/Contents/Library/isoimages/darwin.iso', path=convertpath(dest + '/tools/'))
-		cdszip.extract('payload/VMware Fusion.app/Contents/Library/isoimages/darwinPre15.iso', path=convertpath(dest + '/tools/'))
-		cdszip.close()
-		
-		# Move the iso and sig files to tools folder
-		shutil.move(convertpath(dest + '/tools/payload/VMware Fusion.app/Contents/Library/isoimages/darwin.iso'), convertpath(dest + '/tools/darwin.iso'))
-		shutil.move(convertpath(dest + '/tools/payload/VMware Fusion.app/Contents/Library/isoimages/darwinPre15.iso'), convertpath(dest + '/tools/darwinPre15.iso'))
-		
-		# Cleanup working files and folders
-		shutil.rmtree(convertpath(dest + '/tools/payload'), True)
-		os.remove(convertpath(dest + '/tools/com.vmware.fusion.zip.tar'))
-		os.remove(convertpath(dest + '/tools/com.vmware.fusion.zip'))
+		processfiles(dest)
 		
 		print('Tools retrieved successfully')
 		return
